@@ -6,7 +6,7 @@
   <title>⛽ GasGuard — Smart Gas Scheduler</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js" type="application/javascript"></script>
+  <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js" type="application/javascript"></script>
   <style>
     :root {
       --bg:       #0a0b0f;
@@ -310,7 +310,7 @@
         <div class="card-icon icon-sched">🕐</div>
         <div>
           <div class="card-title">Schedule Transaction</div>
-          <div class="card-sub">Auto-execute when gas price is low enough</div>
+          <div class="card-sub">🧠 Keeper finds the lowest gas price before your deadline</div>
         </div>
       </div>
       <div class="form-group">
@@ -322,15 +322,21 @@
         <input id="sc-amount" type="number" step="0.001" min="0" placeholder="0.05" />
       </div>
       <div class="form-group">
-        <label>Max Gas Price (Gwei) — execute only below this</label>
-        <input id="sc-maxgas" type="number" step="1" min="1" placeholder="30" />
+        <label>Execute Within</label>
+        <select id="sc-deadline-preset" onchange="onDeadlinePreset()">
+          <option value="21600">6 hours</option>
+          <option value="86400" selected>1 day</option>
+          <option value="172800">2 days</option>
+          <option value="604800">1 week</option>
+          <option value="custom">Custom date &amp; time…</option>
+        </select>
       </div>
-      <div class="form-group">
-        <label>Deadline</label>
+      <div class="form-group" id="sc-custom-wrap" style="display:none">
+        <label>Custom Deadline</label>
         <input id="sc-expiry" type="datetime-local" />
       </div>
       <button class="btn btn-schedule" id="scheduleBtn" onclick="scheduleTransaction()" disabled>
-        🕐 Schedule Transaction
+        🧠 Smart Schedule
       </button>
     </div>
 
@@ -579,18 +585,25 @@ async function scheduleTransaction() {
 
   const recipient = document.getElementById("sc-recipient").value.trim();
   const amt       = document.getElementById("sc-amount").value.trim();
-  const maxGas    = document.getElementById("sc-maxgas").value.trim();
-  const expiryStr = document.getElementById("sc-expiry").value;
+  const hardCap   = "200"; // silent default — user never needs to think about this
 
   if (!ethers.utils.isAddress(recipient)) return toast("Invalid recipient address", "error");
-  if (!amt || parseFloat(amt) <= 0)       return toast("Enter a valid ETH amount", "error");
-  if (!maxGas || parseFloat(maxGas) <= 0) return toast("Enter a max gas price (Gwei)", "error");
-  if (!expiryStr)                         return toast("Pick a deadline", "error");
+  if (!amt || parseFloat(amt) <= 0)        return toast("Enter a valid ETH amount", "error");
+  if (!hardCap || parseFloat(hardCap) <= 0) return toast("Enter a hard cap (Gwei)", "error");
 
-  const expiryTs = Math.floor(new Date(expiryStr).getTime() / 1000);
+  // Resolve deadline
+  let expiryTs;
+  const preset = document.getElementById("sc-deadline-preset").value;
+  if (preset === "custom") {
+    const raw = document.getElementById("sc-expiry").value;
+    if (!raw) return toast("Pick a custom deadline", "error");
+    expiryTs = Math.floor(new Date(raw).getTime() / 1000);
+  } else {
+    expiryTs = Math.floor(Date.now() / 1000) + parseInt(preset);
+  }
   if (expiryTs <= Math.floor(Date.now() / 1000)) return toast("Deadline must be in the future!", "error");
 
-  const maxGasWei = ethers.utils.parseUnits(maxGas, "gwei");
+  const maxGasWei = ethers.utils.parseUnits(hardCap, "gwei");
   const value     = ethers.utils.parseEther(amt);
 
   const btn = document.getElementById("scheduleBtn");
@@ -600,16 +613,15 @@ async function scheduleTransaction() {
     const tx = await contract.scheduleTransaction(recipient, maxGasWei, expiryTs, { value });
     toast("Tx submitted! Hash: " + tx.hash.slice(0,18) + "…", "info");
     const receipt = await tx.wait();
-    toast("✅ Transaction scheduled! ETH locked in contract.", "success");
+    const deadlineStr = new Date(expiryTs * 1000).toLocaleString();
+    toast("✅ Scheduled! Keeper will find the best gas price before " + deadlineStr, "success");
     document.getElementById("sc-recipient").value = "";
-    document.getElementById("sc-amount").value = "";
-    document.getElementById("sc-maxgas").value = "";
-    document.getElementById("sc-expiry").value = "";
+    document.getElementById("sc-amount").value    = "";
     await refreshAll();
   } catch(e) {
     toast(e.reason || e.message || "Scheduling failed", "error");
   } finally {
-    btn.innerHTML = "🕐 Schedule Transaction";
+    btn.innerHTML = "🧠 Smart Schedule";
     btn.disabled = false;
   }
 }
@@ -655,12 +667,36 @@ function toast(msg, type = "info") {
   _toastTimer = setTimeout(() => { el.style.display = "none"; }, 5000);
 }
 
-// ── DEFAULT DEADLINE = 48 HOURS FROM NOW ─────────────
-(function setDefaultDeadline() {
-  const d = new Date(Date.now() + 48 * 3600 * 1000);
-  d.setMinutes(0, 0, 0);
-  const iso = d.toISOString().slice(0, 16);
-  document.getElementById("sc-expiry").value = iso;
+// ── DEADLINE PRESET HANDLER ──────────────────────────
+function onDeadlinePreset() {
+  const val = document.getElementById("sc-deadline-preset").value;
+  document.getElementById("sc-custom-wrap").style.display = val === "custom" ? "block" : "none";
+  if (val === "custom") {
+    const d = new Date(Date.now() + 48 * 3600 * 1000);
+    d.setMinutes(0, 0, 0);
+    document.getElementById("sc-expiry").value = d.toISOString().slice(0,16);
+  }
+}
+
+// ── AUTO-LOAD CONTRACT ADDRESS FROM deployed.json ────
+(async function autoLoadContract() {
+  try {
+    const res = await fetch('./deployed.json');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.address && data.address !== '') {
+      const el = document.getElementById("contractAddr");
+      el.value = data.address;
+      el.style.borderColor = 'rgba(124,58,237,0.5)';
+      // Show which network it's from
+      const networkLabel = data.network
+        ? ` (${data.network})`
+        : '';
+      el.title = `Auto-loaded from deployed.json${networkLabel} · Deployed: ${data.deployedAt || 'unknown'}`;
+      // If wallet already connected, refresh
+      if (signer) await refreshAll();
+    }
+  } catch { /* silently skip if file not found */ }
 })();
 </script>
 </body>

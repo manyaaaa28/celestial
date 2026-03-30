@@ -1,6 +1,13 @@
 # Node modules
 /node_modules
 
+# Secrets — never commit!
+.env
+
+# Keeper auto-generated data
+gas_history.json
+tx_state.json
+
 # Compilation output
 /dist
 
