@@ -9,11 +9,13 @@ Most people send transactions when they need to, but Ethereum gas prices fluctua
 ---
 
 ## 😟 The Problem
-- **Gas Spikes:** During NFT drops or market volatility, simple transfers can cost a fortune.
-- **Bad Timing:** You might need to send a payment at 2 PM when gas is 80 Gwei, but it drops to 15 Gwei at 4 AM while you're asleep.
-- **Manual Stress:** Nobody wants to keep refreshing Etherscan to save a few bucks.
+Ethereum users often struggle to decide the right time to execute transactions, leading to inefficiencies and higher costs. This creates a clear need for a system that can handle such decisions more intelligently. 
+
+Imagine you need to submit a stake for a hackathon—even a small amount like **0.001 ETH** translates to a noticeable cost in real-world currency. Timing becomes critical, but constantly checking gas fees is exhausting.
 
 ## ✨ The Solution: Smart Scheduling
+GasGuard addresses this by allowing you to define intelligent conditions for your transactions. Instead of babysitting a gas tracker, you can set a deadline (say, within a week) and rely on the system to automatically schedule and execute your transaction at the most optimal time before that deadline hits.
+
 With GasGuard, you don't send transactions—you **delegate** them.
 
 1. **Set Your Terms:** Choose your recipient and amount.
