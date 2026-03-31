@@ -23,8 +23,22 @@ const http = require('http');
 // ─── DUMMY WEB SERVER (For Render Free Tier) ─────────────────────────────
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('GasGuard Keeper is active\n');
+  // Allow cross-origin requests from any frontend
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+
+  if (req.url.startsWith('/predictions.json')) {
+    if (fs.existsSync(PREDICTIONS_PATH)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(fs.readFileSync(PREDICTIONS_PATH, 'utf8'));
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Predictions not ready' }));
+    }
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('GasGuard Keeper is active\n');
+  }
 }).listen(PORT, () => {
   console.log(`\n📡 Dummy server listening on port ${PORT} (Render Keep-Alive)`);
 });

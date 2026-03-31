@@ -619,8 +619,14 @@ async function loadTxs(count) {
   // Fetch keeper predictions (written by keeper every 30s)
   let predictions = {};
   try {
-    const r = await fetch('./predictions.json?t=' + Date.now());
+    // Try local first, fallback to live keeper URL
+    const KEEPER_URL = "https://celestial-keeper.onrender.com/predictions.json";
+    const r = await fetch(KEEPER_URL + '?t=' + Date.now());
     if (r.ok) { const d = await r.json(); predictions = d.predictions || {}; }
+    else {
+      const rl = await fetch('./predictions.json?t=' + Date.now());
+      if (rl.ok) { const dl = await rl.json(); predictions = dl.predictions || {}; }
+    }
   } catch {}
 
   const tbody = document.getElementById("txsBody");
