@@ -218,6 +218,25 @@
       margin-bottom: 20px; display: none;
     }
     .testnet-tip a { color: #fbbf24; }
+
+    /* ── NETWORK MISMATCH BANNER ── */
+    .network-mismatch-banner {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 12px; padding: 16px 20px; font-size: 14px; color: #fca5a5;
+      margin-bottom: 24px; display: none;
+      display: none; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    .network-mismatch-banner .mismatch-text { flex: 1; line-height: 1.5; }
+    .network-mismatch-banner .mismatch-title { font-weight: 700; color: #f87171; margin-bottom: 4px; font-size: 15px; }
+    .btn-switch-network {
+      padding: 9px 18px; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+      color: white; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: 'Inter', sans-serif;
+      white-space: nowrap; transition: all 0.2s;
+      box-shadow: 0 4px 16px rgba(239,68,68,0.3);
+    }
+    .btn-switch-network:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(239,68,68,0.45); }
   </style>
 </head>
 <body>
@@ -277,6 +296,20 @@
   <!-- TESTNET TIP -->
   <div class="testnet-tip" id="testnetTip">
     ⚠️ You're on a testnet! Get free Sepolia ETH from a <a href="https://sepoliafaucet.com" target="_blank">faucet</a>. The contract address below works only after you deploy it on this network.
+  </div>
+
+  <!-- NETWORK MISMATCH BANNER -->
+  <div class="network-mismatch-banner" id="networkMismatchBanner">
+    <span style="font-size:28px">⚠️</span>
+    <div class="mismatch-text">
+      <div class="mismatch-title">Wrong Network Detected</div>
+      Your MetaMask is connected to <strong id="wrongNetworkName">another network</strong>, but the contract is deployed on <strong>Hardhat Local</strong> or <strong>Sepolia Testnet</strong>.
+      Switch to one of these networks to view and interact with your scheduled transactions.
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-switch-network" onclick="switchToHardhat()">🔀 Switch to Hardhat</button>
+      <button class="btn-switch-network" style="background:linear-gradient(135deg, #a855f7, #3b82f6);box-shadow:0 4px 16px rgba(168,85,247,0.3);" onclick="switchToSepolia()">🔀 Switch to Sepolia</button>
+    </div>
   </div>
 
   <!-- ACTION GRID -->
@@ -435,11 +468,80 @@ async function connectWallet() {
 
     toast("Wallet connected! " + short, "success");
 
+    // Check network mismatch — warn if not on Hardhat or Sepolia
+    checkNetworkMismatch(chainId);
+
     // Listen for account/chain changes
     window.ethereum.on("accountsChanged", () => location.reload());
     window.ethereum.on("chainChanged",    () => location.reload());
   } catch(e) {
     toast(e.message || "Connection failed", "error");
+  }
+}
+
+function checkNetworkMismatch(cid) {
+  const banner = document.getElementById("networkMismatchBanner");
+  // If not on Hardhat (31337) AND not on Sepolia (11155111)
+  if (cid !== 31337 && cid !== 11155111) {
+    const info = NETWORKS[cid] || { name: "Chain " + cid };
+    document.getElementById("wrongNetworkName").textContent = info.name;
+    banner.style.display = "flex";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+async function switchToHardhat() {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x7a69" }], // 31337 in hex
+    });
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0x7a69",
+            chainName: "Hardhat Local",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["http://127.0.0.1:8545"],
+          }],
+        });
+      } catch (addErr) {
+        toast("Could not add network: " + (addErr.message || addErr), "error");
+      }
+    } else {
+      toast("Could not switch network: " + (switchErr.message || switchErr), "error");
+    }
+  }
+}
+
+async function switchToSepolia() {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0xaa36a7" }], // 11155111 in hex
+    });
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0xaa36a7",
+            chainName: "Sepolia Testnet",
+            nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["https://eth-sepolia.g.alchemy.com/v2/demo"], // generic fallback
+          }],
+        });
+      } catch (addErr) {
+        toast("Could not add network: " + (addErr.message || addErr), "error");
+      }
+    } else {
+      toast("Could not switch network: " + (switchErr.message || switchErr), "error");
+    }
   }
 }
 
@@ -499,10 +601,14 @@ async function refreshAll() {
 
 // ── LOAD SCHEDULED TXS ──────────────────────────────────
 async function loadTxs(count) {
-  if (!contract || count === 0) {
-    document.getElementById("txsEmpty").textContent = count === 0
-      ? "💭 No scheduled transactions yet. Create one above!"
-      : "🔗 Set a valid contract address to view transactions";
+  if (!contract) {
+    document.getElementById("txsEmpty").textContent = "🔗 Set a valid contract address to view transactions";
+    document.getElementById("txsEmpty").style.display = "block";
+    document.getElementById("txsTableWrap").style.display = "none";
+    return;
+  }
+  if (count === 0) {
+    document.getElementById("txsEmpty").textContent = "💭 No scheduled transactions yet. Create one above!";
     document.getElementById("txsEmpty").style.display = "block";
     document.getElementById("txsTableWrap").style.display = "none";
     return;

@@ -17,36 +17,18 @@ declare module "hardhat/types/runtime" {
       name: "GasOptimizedScheduler",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.GasOptimizedScheduler__factory>;
-    getContractFactory(
-      name: "GasOptimizedScheduler",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.GasOptimizedScheduler__factory>;
 
     getContractAt(
       name: "GasOptimizedScheduler",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.GasOptimizedScheduler>;
-    getContractAt(
-      name: "GasOptimizedScheduler",
-      address: string | ethers.Addressable,
-      signer?: ethers.Signer
-    ): Promise<Contracts.GasOptimizedScheduler>;
 
     deployContract(
       name: "GasOptimizedScheduler",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.GasOptimizedScheduler>;
-    deployContract(
-      name: "GasOptimizedScheduler",
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.GasOptimizedScheduler>;
 
-    deployContract(
-      name: "GasOptimizedScheduler",
-      args: any[],
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.GasOptimizedScheduler>;
     deployContract(
       name: "GasOptimizedScheduler",
       args: any[],

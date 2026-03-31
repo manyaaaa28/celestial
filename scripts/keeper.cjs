@@ -64,8 +64,8 @@ function getPercentile(sorted, p) {
 }
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────
-const IS_SEPOLIA       = !!process.env.SEPOLIA_RPC_URL;
-const RPC_URL          = process.env.SEPOLIA_RPC_URL || 'http://127.0.0.1:8545';
+const IS_SEPOLIA       = !!process.env.SEPOLIA_RPC_URL && process.env.SEPOLIA_RPC_URL.includes('sepolia');
+const RPC_URL          = (IS_SEPOLIA ? process.env.SEPOLIA_RPC_URL : null) || 'http://127.0.0.1:8545';
 const PRIVATE_KEY      = process.env.PRIVATE_KEY;
 const NETWORK_NAME     = IS_SEPOLIA ? 'Sepolia Testnet' : 'Hardhat Local';
 const POLL_INTERVAL    = Number(process.env.POLL_INTERVAL_SECONDS || 30) * 1000;
@@ -128,7 +128,8 @@ function rebuildSorted() {
 // Projects the next occurrence of that hour forward as the predicted execution time.
 
 function predictBestTime(expiryUnix) {
-  if (gasHistory.length < 6) return null;
+  // If we have history, use it. If not, just give a placeholder prediction.
+  if (gasHistory.length < 1) return null;
 
   // Bucket by hour-of-day (local time)
   const buckets = Array.from({ length: 24 }, () => []);
@@ -364,7 +365,10 @@ async function main() {
         const tx  = await contract.getTransaction(id);
         const now = BigInt(Math.floor(Date.now()/1000));
 
-        if (tx.executed || tx.cancelled || tx.expiry < now) continue;
+        console.log(`[DEBUG] Checking TX #${id}: executed=${tx.executed}, cancelled=${tx.cancelled}, expiry=${tx.expiry}, now=${now}`);
+
+        if (tx.executed || tx.cancelled) continue;
+        // if (tx.expiry < now) continue; // Comment this out temporarily for debugging
         roundPending++;
 
         const sid = id.toString();
@@ -426,8 +430,13 @@ async function main() {
       if (roundPending === 0) log('💤', dim('All transactions resolved.'));
       else log('📊', `${green(roundExecuted+' executed')}  ${dim((roundPending-roundExecuted)+' waiting')}`);
 
-      // Save predictions so frontend can display them
-      savePredictions(pendingPredictions);
+      // Log for debugging
+      console.log(`[DEBUG] Found ${roundPending} pending transactions. Predictions object:`, JSON.stringify(pendingPredictions));
+
+      if (roundPending >= 0) {
+        // Save predictions so frontend can display them
+        savePredictions(pendingPredictions);
+      }
 
     } catch (err) {
       log('💥', red(`Keeper error: ${err.message}`));
