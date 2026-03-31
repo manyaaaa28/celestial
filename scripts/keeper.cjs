@@ -83,18 +83,24 @@ if (!CONTRACT_ADDRESS) {
 if (!CONTRACT_ADDRESS) CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 
 // ─── PERSISTENCE ──────────────────────────────────────────────────────────
-const HISTORY_PATH  = path.join(__dirname, '..', 'gas_history.json');
-const TX_STATE_PATH = path.join(__dirname, '..', 'tx_state.json');
+const HISTORY_PATH      = path.join(__dirname, '..', 'gas_history.json');
+const TX_STATE_PATH     = path.join(__dirname, '..', 'tx_state.json');
+const PREDICTIONS_PATH  = path.join(__dirname, '..', 'predictions.json');
 
-// Gas history — array of BigInt (wei)
+// Gas history — array of { ts: unixSecs, gas: BigInt }
 let gasHistory = [];
-let gasSorted  = [];
+let gasSorted  = []; // just BigInt gas values, sorted ascending
 
 function loadHistory() {
   if (!fs.existsSync(HISTORY_PATH)) return;
   try {
     const raw = JSON.parse(fs.readFileSync(HISTORY_PATH,'utf8'));
-    gasHistory = (raw.readings||[]).map(v => BigInt(v));
+    const readings = raw.readings || [];
+    // Support old format (plain string array) and new format ({ts, gas})
+    gasHistory = readings.map(r => {
+      if (typeof r === 'object' && r.gas) return { ts: r.ts, gas: BigInt(r.gas) };
+      return { ts: Math.floor(Date.now()/1000), gas: BigInt(r) }; // old: no ts
+    });
     rebuildSorted();
     log('📂', `Loaded ${gasHistory.length} gas readings from history`);
   } catch {}
@@ -102,20 +108,94 @@ function loadHistory() {
 function saveHistory() {
   try {
     fs.writeFileSync(HISTORY_PATH, JSON.stringify({
-      updated: new Date().toISOString(),
-      count:   gasHistory.length,
-      readings: gasHistory.map(v => v.toString()),
+      updated:  new Date().toISOString(),
+      count:    gasHistory.length,
+      readings: gasHistory.map(r => ({ ts: r.ts, gas: r.gas.toString() })),
     }));
   } catch {}
 }
 function addReading(gas) {
-  gasHistory.push(gas);
+  gasHistory.push({ ts: Math.floor(Date.now()/1000), gas });
   if (gasHistory.length > MAX_HISTORY) gasHistory.shift();
   rebuildSorted();
 }
 function rebuildSorted() {
-  gasSorted = [...gasHistory].sort((a,b) => a < b ? -1 : a > b ? 1 : 0);
+  gasSorted = gasHistory.map(r => r.gas).sort((a,b) => a < b ? -1 : a > b ? 1 : 0);
 }
+
+// ─── GAS PRICE PREDICTION ─────────────────────────────────────────────────
+// Groups historical readings by hour-of-day to find the cheapest hour.
+// Projects the next occurrence of that hour forward as the predicted execution time.
+
+function predictBestTime(expiryUnix) {
+  if (gasHistory.length < 6) return null;
+
+  // Bucket by hour-of-day (local time)
+  const buckets = Array.from({ length: 24 }, () => []);
+  gasHistory.forEach(({ ts, gas }) => {
+    const hour = new Date(ts * 1000).getHours(); // local hour
+    buckets[hour].push(gas);
+  });
+
+  // Average gas per hour (skip empty hours)
+  const hourAvgs = buckets
+    .map((readings, h) => {
+      if (!readings.length) return null;
+      const avg = readings.reduce((a, b) => a + b, 0n) / BigInt(readings.length);
+      return { hour: h, avg, count: readings.length };
+    })
+    .filter(Boolean);
+
+  if (!hourAvgs.length) return null;
+
+  // Find hour with lowest average gas
+  const best = hourAvgs.reduce((a, b) => b.avg < a.avg ? b : a);
+  const worst = hourAvgs.reduce((a, b) => b.avg > a.avg ? b : a);
+
+  // Find next occurrence of that hour within deadline
+  const now = new Date();
+  const nowHour = now.getHours();
+  let hoursUntil = best.hour - nowHour;
+  if (hoursUntil <= 0) hoursUntil += 24;
+
+  const predictedMs  = Date.now() + hoursUntil * 3600 * 1000;
+  const predictedISO = new Date(predictedMs).toISOString();
+  const expiryMs     = expiryUnix * 1000;
+
+  // If prediction falls after deadline, just say "as soon as possible before deadline"
+  if (predictedMs > expiryMs) {
+    return {
+      predictedISO:   new Date(expiryMs - 3600000).toISOString(), // 1h before deadline
+      bestHour:       best.hour,
+      bestGwei:       (Number(best.avg) / 1e9).toFixed(4),
+      worstGwei:      (Number(worst.avg) / 1e9).toFixed(4),
+      confidence:     'low',
+      note:           'Best hour falls after deadline — will execute as soon as possible',
+    };
+  }
+
+  const hourStr = String(best.hour).padStart(2,'0') + ':00';
+  const confidence = gasHistory.length > 240 ? 'high' : gasHistory.length > 48 ? 'medium' : 'low';
+
+  return {
+    predictedISO,
+    bestHour:   best.hour,
+    bestGwei:   (Number(best.avg) / 1e9).toFixed(4),
+    worstGwei:  (Number(worst.avg) / 1e9).toFixed(4),
+    confidence,
+    note:       `Gas tends to be cheapest around ${hourStr} local time`,
+  };
+}
+
+function savePredictions(predictions) {
+  try {
+    fs.writeFileSync(PREDICTIONS_PATH, JSON.stringify({
+      updated:     new Date().toISOString(),
+      predictions, // { txId: { predictedISO, bestGwei, confidence, note } }
+    }, null, 2));
+  } catch {}
+}
+
 
 // TX state — tracks firstSeen time per tx id
 let txState = {};
@@ -139,28 +219,21 @@ const LOCAL_WIN   = 6;   // look back 6 readings (3 min) to detect a local dip
 const GLOBAL_WIN  = 240; // look back 240 readings (2h) for a global reference
 
 function isLocalMinimum(currentGas) {
-  if (gasHistory.length < 3) return false; // not enough data yet
+  if (gasHistory.length < 3) return false;
 
-  const recent = gasHistory.slice(-LOCAL_WIN);
-  const localMin = recent.reduce((a, b) => a < b ? a : b);
-
-  // Current gas is at or below the recent minimum (we're at the bottom of a dip)
+  const recent    = gasHistory.slice(-LOCAL_WIN).map(r => r.gas);
+  const localMin  = recent.reduce((a, b) => a < b ? a : b);
   const atOrBelowLocalMin = currentGas <= localMin;
 
-  // Check if the previous reading was lower than the one before it (was falling)
-  const last  = gasHistory[gasHistory.length - 1];
-  const prev  = gasHistory[gasHistory.length - 2];
+  const last = gasHistory[gasHistory.length - 1].gas;
+  const prev = gasHistory[gasHistory.length - 2]?.gas;
   const wasFalling = prev !== undefined && last <= prev;
+  const nowRising  = prev !== undefined && currentGas >= last;
 
-  // Now rising or flat (trough has passed — ideal moment to catch was just now)
-  const nowRising = prev !== undefined && currentGas >= last;
-
-  // Also: if gas is below the global average → it's a genuinely cheap moment
-  const globalSlice  = gasHistory.slice(-GLOBAL_WIN);
-  const globalAvg    = globalSlice.reduce((a, b) => a + b, 0n) / BigInt(globalSlice.length);
+  const globalSlice = gasHistory.slice(-GLOBAL_WIN).map(r => r.gas);
+  const globalAvg   = globalSlice.reduce((a, b) => a + b, 0n) / BigInt(globalSlice.length);
   const belowAverage = currentGas < globalAvg;
 
-  // Fire if: (at a local trough AND below global average) OR (at dip and was falling then rising)
   return (atOrBelowLocalMin && belowAverage) || (wasFalling && nowRising && atOrBelowLocalMin);
 }
 
@@ -285,6 +358,7 @@ async function main() {
       log('📋', `Scanning ${blue(total.toString())} transaction${total!==1?'s':''}…`);
 
       let roundExecuted = 0, roundPending = 0;
+      const pendingPredictions = {}; // txId → prediction
 
       for (let id = 0; id < total; id++) {
         const tx  = await contract.getTransaction(id);
@@ -304,6 +378,14 @@ async function main() {
 
         const { execute, reason, urgency, isCrit } =
           getDecision(sid, Number(tx.expiry), gasPrice);
+
+        // Compute prediction for this tx
+        const prediction = predictBestTime(Number(tx.expiry));
+        if (prediction) {
+          pendingPredictions[sid] = prediction;
+          const pTime = new Date(prediction.predictedISO).toLocaleString();
+          log('📊', `TX #${id} — est. best time: ${cyan(pTime)}  (${dim(prediction.note)})`);
+        }
 
         const belowHardCap = gasPrice <= tx.maxGasPrice;
         const shouldExecute = execute && belowHardCap;
@@ -343,6 +425,9 @@ async function main() {
 
       if (roundPending === 0) log('💤', dim('All transactions resolved.'));
       else log('📊', `${green(roundExecuted+' executed')}  ${dim((roundPending-roundExecuted)+' waiting')}`);
+
+      // Save predictions so frontend can display them
+      savePredictions(pendingPredictions);
 
     } catch (err) {
       log('💥', red(`Keeper error: ${err.message}`));

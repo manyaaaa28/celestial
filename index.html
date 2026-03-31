@@ -366,8 +366,8 @@
             <th>#ID</th>
             <th>Recipient</th>
             <th>Amount</th>
-            <th>Max Gas</th>
-            <th>Expires</th>
+            <th>Deadline</th>
+            <th>⏰ Est. Execution</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -497,11 +497,11 @@ async function refreshAll() {
   }
 }
 
-// ── LOAD SCHEDULED TXS ──────────────────────────────
+// ── LOAD SCHEDULED TXS ──────────────────────────────────
 async function loadTxs(count) {
   if (!contract || count === 0) {
     document.getElementById("txsEmpty").textContent = count === 0
-      ? "📭 No scheduled transactions yet. Create one above!"
+      ? "💭 No scheduled transactions yet. Create one above!"
       : "🔗 Set a valid contract address to view transactions";
     document.getElementById("txsEmpty").style.display = "block";
     document.getElementById("txsTableWrap").style.display = "none";
@@ -510,37 +510,60 @@ async function loadTxs(count) {
   document.getElementById("txsEmpty").style.display = "none";
   document.getElementById("txsTableWrap").style.display = "block";
 
+  // Fetch keeper predictions (written by keeper every 30s)
+  let predictions = {};
+  try {
+    const r = await fetch('./predictions.json?t=' + Date.now());
+    if (r.ok) { const d = await r.json(); predictions = d.predictions || {}; }
+  } catch {}
+
   const tbody = document.getElementById("txsBody");
   tbody.innerHTML = "";
 
   for (let i = 0; i < count; i++) {
     try {
-      const tx = await contract.getTransaction(i);
+      const tx  = await contract.getTransaction(i);
       const now = Math.floor(Date.now() / 1000);
 
       let statusClass = "status-pending", statusLabel = "⏳ Pending";
-      if (tx.executed)        { statusClass = "status-executed"; statusLabel = "✅ Executed"; }
-      else if (tx.cancelled)  { statusClass = "status-cancelled"; statusLabel = "❌ Cancelled"; }
-      else if (tx.expiry.toNumber() < now) { statusClass = "status-cancelled"; statusLabel = "⌛ Expired"; }
+      if (tx.executed)                         { statusClass = "status-executed";  statusLabel = "✅ Executed"; }
+      else if (tx.cancelled)                   { statusClass = "status-cancelled"; statusLabel = "❌ Cancelled"; }
+      else if (tx.expiry.toNumber() < now)     { statusClass = "status-cancelled"; statusLabel = "⌛ Expired"; }
 
       const isPending = !tx.executed && !tx.cancelled && tx.expiry.toNumber() > now;
       const expiryDate = new Date(tx.expiry.toNumber() * 1000).toLocaleString();
-      const maxGwei = parseFloat(ethers.utils.formatUnits(tx.maxGasPrice, "gwei")).toFixed(1);
-      const amtEth = parseFloat(ethers.utils.formatEther(tx.amount)).toFixed(4);
-      const shortAddr = tx.recipient.slice(0,6) + "…" + tx.recipient.slice(-4);
+      const amtEth     = parseFloat(ethers.utils.formatEther(tx.amount)).toFixed(4);
+      const shortAddr  = tx.recipient.slice(0,6) + "…" + tx.recipient.slice(-4);
+
+      // Prediction cell
+      const pred = predictions[i.toString()];
+      let predCell = '<span style="color:var(--muted);font-size:11px">🔄 Keeper collecting data…</span>';
+      if (!isPending) {
+        predCell = '<span style="color:var(--muted);font-size:11px">—</span>';
+      } else if (pred) {
+        const pDate = new Date(pred.predictedISO);
+        const pStr  = pDate.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' })
+                    + ' ' + pDate.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+        const confColor = pred.confidence === 'high' ? '#4ade80' : pred.confidence === 'medium' ? '#fbbf24' : '#94a3b8';
+        predCell = `
+          <div style="font-size:12px">
+            <div style="color:#e2e8f0;font-weight:600">⏰ ${pStr}</div>
+            <div style="color:${confColor};font-size:11px;margin-top:2px">${pred.confidence} confidence • ~${pred.bestGwei} Gwei</div>
+          </div>`;
+      }
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><strong>#${i}</strong></td>
         <td><span class="addr" title="${tx.recipient}">${shortAddr}</span></td>
         <td>${amtEth} ETH</td>
-        <td>${maxGwei} Gwei</td>
         <td style="font-size:12px;color:var(--muted)">${expiryDate}</td>
+        <td>${predCell}</td>
         <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         <td>
           <div class="action-btns">
-            <button class="btn-xs btn-exec" onclick="executeTx(${i})" ${isPending ? "" : "disabled"}>▶ Execute</button>
-            <button class="btn-xs btn-cancel" onclick="cancelTx(${i})" ${isPending ? "" : "disabled"}>✕ Cancel</button>
+            <button class="btn-xs btn-exec"   onclick="executeTx(${i})"  ${isPending ? "" : "disabled"}>▶ Execute</button>
+            <button class="btn-xs btn-cancel" onclick="cancelTx(${i})"   ${isPending ? "" : "disabled"}>✕ Cancel</button>
           </div>
         </td>`;
       tbody.appendChild(tr);
