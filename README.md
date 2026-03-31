@@ -1,100 +1,72 @@
-# ⛽ GasGuard — Smart Gas Scheduler
+# ⛽ GasGuard — Stop Overpaying for Ethereum Transactions
 
-> **Schedule Ethereum transactions to auto-execute when gas prices are lowest**
+**Why pay $50 for a transaction when it could cost $5?**
 
-A beginner-friendly blockchain project built with **Hardhat + Solidity + ethers.js**.
+Most people send transactions when they need to, but Ethereum gas prices fluctuate wildly throughout the day. If you aren't staring at a gas tracker 24/7, you're likely losing money. 
+
+**GasGuard** is a smart automation tool that watches the market for you. It lets you schedule a transaction now and automatically executes it only when the network is quiet and prices are at their lowest.
 
 ---
 
-## 🧠 App Flow
+## 😟 The Problem
+- **Gas Spikes:** During NFT drops or market volatility, simple transfers can cost a fortune.
+- **Bad Timing:** You might need to send a payment at 2 PM when gas is 80 Gwei, but it drops to 15 Gwei at 4 AM while you're asleep.
+- **Manual Stress:** Nobody wants to keep refreshing Etherscan to save a few bucks.
 
-```
-User connects MetaMask
-       │
-       ├─► [Send Now]              → Instant ETH transfer
-       │
-       └─► [Schedule Transaction] → Locks ETH in contract
-                                     Contract checks gas price
-                                     Auto-executes when gas ≤ your limit ✅
-```
+## ✨ The Solution: Smart Scheduling
+With GasGuard, you don't send transactions—you **delegate** them.
 
-## ✨ Features
+1. **Set Your Terms:** Choose your recipient and amount.
+2. **Define Your Limit:** Tell the app the maximum gas price you're willing to pay.
+3. **Set a Deadline:** Give the app a window (e.g., "within the next 24 hours").
+4. **Relax:** Our "Smart Keeper" bot monitors the network. It uses historical data to predict the cheapest moment and triggers your transaction at the perfect time.
 
-- 🦊 **MetaMask wallet** connect (Sepolia testnet + Hardhat local)
-- ⚡ **Send Now** — instant direct ETH transfer
-- 🕐 **Schedule Transaction** — lock ETH, set a max gas price & deadline
-- 📊 **Live stats** — wallet balance, contract balance, gas price, tx count
-- ✅ **Execute / ❌ Cancel** scheduled transactions from the UI
-- 📋 Full transaction history table with status badges
+---
 
-## 🗂 Project Structure
+## 🧠 How It Works (The Simple Version)
+- **Safe Custody:** Your ETH is locked in a secure smart contract, not held by a person.
+- **Predictive Logic:** The bot doesn't just wait for a low price; it studies when gas *usually* drops (like late nights or weekends) to find the absolute bottom.
+- **Emergency Exit:** You can cancel any scheduled transaction at any time before it executes and get your ETH back instantly.
+- **Deadline Guarantee:** If your deadline is approaching and the price hasn't hit your target, the bot can be configured to prioritize completion so you don't miss your window.
 
-```
-blockchain-project/
-├── contracts/
-│   └── contract.sol       # GasOptimizedScheduler smart contract
-├── scripts/
-│   ├── deploy.cjs         # Deploy script
-│   └── interact.cjs       # Interaction demo
-├── index.html             # Frontend UI (open in browser!)
-├── hardhat.config.cts
-└── package.json
-```
+---
 
-## 🚀 Quick Start
+## 🚀 Quick Start for Users
 
-### 1. Install & Compile
+### 1. Connect
+Open the [GasGuard Dashboard](index.html) and connect your MetaMask wallet.
+
+### 2. Schedule
+Enter the recipient's address and the amount. Select a time window (6 hours, 1 day, etc.) and hit **Smart Schedule**.
+
+### 3. Monitor
+Watch your transaction in the "Scheduled Transactions" table. You'll see an **Estimated Execution Time** based on our bot's market analysis.
+
+---
+
+## 🛠 For Developers
+If you want to run your own keeper bot or deploy the contract locally:
 
 ```bash
+# Install dependencies
 npm install
-npx hardhat compile
-```
 
-### 2. Run locally (Hardhat node)
-
-```bash
-# Terminal 1 — start local blockchain
+# Run a local test network
 npx hardhat node
 
-# Terminal 2 — deploy contract
+# Deploy the contract
 npx hardhat run scripts/deploy.cjs --network localhost
 
-# Terminal 2 — run interaction demo
-npx hardhat run scripts/interact.cjs --network localhost
+# Start the automated keeper
+npm run keeper:local
 ```
 
-### 3. Open the frontend
+---
 
-Just open `index.html` in your browser — no build step needed!
+## 🔒 Security
+- **Non-Custodial:** Only you (the owner) can cancel or modify your transactions.
+- **Transparent:** Every action is recorded on the blockchain for anyone to verify.
+- **Open Source:** Built with industry-standard tools like Hardhat and OpenZeppelin.
 
-- Paste the deployed contract address into the UI
-- Connect MetaMask (point it to Hardhat localhost: `http://127.0.0.1:8545`, Chain ID `31337`)
-- Use **Send Now** or **Schedule Transaction**
-
-### 4. Deploy to Sepolia Testnet
-
-```bash
-# Add to hardhat.config.cts:
-# networks: { sepolia: { url: "YOUR_RPC", accounts: ["YOUR_PRIVATE_KEY"] } }
-
-npx hardhat run scripts/deploy.cjs --network sepolia
-```
-
-Get free Sepolia ETH: https://sepoliafaucet.com
-
-## 📄 Contract Functions
-
-| Function | What it does |
-|---|---|
-| `scheduleTransaction(recipient, maxGas, expiry)` | Lock ETH + set conditions |
-| `checkCondition(txId)` | Is gas low enough right now? |
-| `executeTransaction(txId)` | Release ETH if conditions met |
-| `cancelTransaction(txId)` | Cancel & refund ETH to owner |
-| `getTransaction(txId)` | Read all details of a scheduled tx |
-
-## 🛠 Built With
-
-- [Hardhat](https://hardhat.org) — Ethereum development framework
-- [Solidity 0.8.20](https://soliditylang.org) — Smart contract language
-- [ethers.js v5](https://docs.ethers.org) — Ethereum JS library
-- [MetaMask](https://metamask.io) — Wallet & transaction signing
+---
+*Save gas, sleep better. Powered by GasGuard.*
