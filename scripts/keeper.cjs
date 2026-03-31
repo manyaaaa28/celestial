@@ -18,6 +18,16 @@ require('dotenv').config();
 const { ethers } = require('ethers');
 const fs   = require('fs');
 const path = require('path');
+const http = require('http');
+
+// ─── DUMMY WEB SERVER (For Render Free Tier) ─────────────────────────────
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('GasGuard Keeper is active\n');
+}).listen(PORT, () => {
+  console.log(`\n📡 Dummy server listening on port ${PORT} (Render Keep-Alive)`);
+});
 
 // ─── ANSI colours ─────────────────────────────────────────────────────────
 const C = {
