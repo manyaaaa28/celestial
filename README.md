@@ -36,7 +36,7 @@ With GasGuard, you don't send transactions—you **delegate** them.
 ## 🚀 Quick Start for Users
 
 ### 1. Connect
-Open the [GasGuard Dashboard](index.html) and connect your MetaMask wallet.
+Open the GasGuard Dashboard and connect your MetaMask wallet.
 
 ### 2. Schedule
 Enter the recipient's address and the amount. Select a time window (6 hours, 1 day, etc.) and hit **Smart Schedule**.
@@ -86,6 +86,9 @@ npm run keeper:local
 - **Hosting:** [Render](https://render.com/) (Frontend & Keeper)
 
 ---
+## 📷 DEMO
+<img width="1919" height="1021" alt="Screenshot 2026-03-31 201318" src="https://github.com/user-attachments/assets/a9bc0787-53be-42db-8379-02ecc3c2cf92" />
+
 
 ## 📄 License
 This project is licensed under the **MIT License**.
