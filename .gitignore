@@ -1,0 +1,28 @@
+# Node modules
+/node_modules
+
+# Secrets — never commit!
+.env
+
+# Keeper auto-generated data
+gas_history.json
+tx_state.json
+predictions.json
+
+# Compilation output
+/dist
+
+# pnpm deploy output
+/bundle
+
+# Hardhat Build Artifacts
+/artifacts
+
+# Hardhat compilation (v2) support directory
+/cache
+
+# Typechain output
+/types
+
+# Hardhat coverage reports
+/coverage

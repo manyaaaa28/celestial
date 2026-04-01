@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>⛽ GasGuard — Smart Gas Scheduler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js" type="application/javascript"></script>
+  <style>
+    :root {
+      --bg:       #0a0b0f;
+      --surface:  #13151d;
+      --glass:    rgba(255,255,255,0.04);
+      --border:   rgba(255,255,255,0.08);
+      --purple:   #7c3aed;
+      --purple2:  #a855f7;
+      --blue:     #3b82f6;
+      --green:    #10b981;
+      --red:      #ef4444;
+      --yellow:   #f59e0b;
+      --text:     #f1f5f9;
+      --muted:    #64748b;
+      --radius:   16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,58,237,0.18) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 90% 80%, rgba(59,130,246,0.10) 0%, transparent 60%);
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px; border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(10,11,15,0.8);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 26px; }
+    .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(135deg, #a855f7, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .logo-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .network-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 100px;
+      border: 1px solid var(--border); background: var(--glass);
+      font-size: 13px; color: var(--muted); font-weight: 500;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .network-badge:hover { border-color: var(--purple); color: var(--text); }
+    .net-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    .net-dot.warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .net-dot.off { background: var(--muted); box-shadow: none; animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    #connectBtn {
+      padding: 9px 20px; border-radius: 100px;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      border: none; color: white; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.25s; font-family: 'Inter', sans-serif;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.35);
+    }
+    #connectBtn:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(124,58,237,0.5); }
+    #connectBtn:active { transform: translateY(0); }
+    #connectBtn.connected { background: var(--glass); border: 1px solid var(--border); box-shadow: none; font-size: 13px; }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      display: flex; gap: 16px; padding: 20px 32px;
+      overflow-x: auto;
+    }
+    .stat-card {
+      flex: 1; min-width: 160px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: rgba(124,58,237,0.4); }
+    .stat-label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .stat-value { font-size: 22px; font-weight: 700; }
+    .stat-value.purple { color: var(--purple2); }
+    .stat-value.green  { color: var(--green); }
+    .stat-value.blue   { color: var(--blue); }
+    .stat-value.yellow { color: var(--yellow); }
+
+    /* ── MAIN ── */
+    main { padding: 0 32px 40px; max-width: 1200px; margin: 0 auto; }
+
+    /* ── APP FLOW ── */
+    .flow-banner {
+      background: var(--glass); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 24px;
+      margin-bottom: 28px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+      font-size: 13px; color: var(--muted);
+    }
+    .flow-step { display: flex; align-items: center; gap: 6px; }
+    .flow-arrow { color: var(--purple2); font-weight: 700; }
+    .flow-step span.tag {
+      background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3);
+      color: var(--purple2); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600;
+    }
+
+    /* ── TWO‑COLUMN ACTIONS ── */
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+    @media(max-width:700px){ .action-grid{grid-template-columns:1fr;} }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+    .card:hover { border-color: rgba(124,58,237,0.35); box-shadow: 0 8px 40px rgba(124,58,237,0.08); }
+
+    .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .card-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .icon-send  { background: linear-gradient(135deg,rgba(16,185,129,0.2),rgba(59,130,246,0.2)); }
+    .icon-sched { background: linear-gradient(135deg,rgba(124,58,237,0.2),rgba(168,85,247,0.2)); }
+    .card-title { font-size: 17px; font-weight: 700; }
+    .card-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 7px; }
+    input, select {
+      width: 100%; padding: 11px 14px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 14px;
+      font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+    input::placeholder { color: var(--muted); }
+
+    .btn {
+      width: 100%; padding: 13px; border-radius: 12px; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif;
+      transition: all 0.25s; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+    .btn-send {
+      background: linear-gradient(135deg, #10b981, #3b82f6);
+      color: white; box-shadow: 0 4px 20px rgba(16,185,129,0.3);
+    }
+    .btn-send:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(16,185,129,0.45); }
+    .btn-schedule {
+      background: linear-gradient(135deg, var(--purple), var(--purple2));
+      color: white; box-shadow: 0 4px 20px rgba(124,58,237,0.3);
+    }
+    .btn-schedule:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(124,58,237,0.45); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px; z-index: 999;
+      padding: 14px 20px; border-radius: 12px; font-size: 14px; font-weight: 500;
+      display: none; max-width: 380px; word-break: break-word;
+      animation: slideUp 0.3s ease;
+      border: 1px solid var(--border);
+    }
+    #toast.success { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.4); color: #6ee7b7; }
+    #toast.error   { background: rgba(239,68,68,0.15);  border-color: rgba(239,68,68,0.4);  color: #fca5a5; }
+    #toast.info    { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #93c5fd; }
+    @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── SCHEDULED TXS TABLE ── */
+    .section-title {
+      font-size: 16px; font-weight: 700; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title .badge {
+      background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3);
+      color: var(--purple2); border-radius: 100px; padding: 2px 10px; font-size: 12px;
+    }
+
+    .txs-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .txs-empty { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+    td { padding: 14px 16px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .status-badge {
+      padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .status-pending  { background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); color:#fbbf24; }
+    .status-executed { background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; }
+    .status-cancelled{ background:rgba(239,68,68,0.15);  border:1px solid rgba(239,68,68,0.3);  color:#f87171; }
+
+    .action-btns { display: flex; gap: 6px; }
+    .btn-xs {
+      padding: 5px 12px; border-radius: 8px; border: none; font-size: 12px; font-weight: 600;
+      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
+    }
+    .btn-xs:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-exec   { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #34d399; }
+    .btn-exec:hover:not(:disabled)   { background: rgba(16,185,129,0.25); }
+    .btn-cancel { background: rgba(239,68,68,0.12);  border: 1px solid rgba(239,68,68,0.3);  color: #f87171; }
+    .btn-cancel:hover:not(:disabled) { background: rgba(239,68,68,0.22);  }
+
+    .addr { font-family: monospace; font-size: 12px; color: var(--muted); }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ── TESTNET HELPER ── */
+    .testnet-tip {
+      background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.22);
+      border-radius: 12px; padding: 14px 18px; font-size: 13px; color: #fcd34d;
+      margin-bottom: 20px; display: none;
+    }
+    .testnet-tip a { color: #fbbf24; }
+
+    /* ── NETWORK MISMATCH BANNER ── */
+    .network-mismatch-banner {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 12px; padding: 16px 20px; font-size: 14px; color: #fca5a5;
+      margin-bottom: 24px; display: none;
+      display: none; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    .network-mismatch-banner .mismatch-text { flex: 1; line-height: 1.5; }
+    .network-mismatch-banner .mismatch-title { font-weight: 700; color: #f87171; margin-bottom: 4px; font-size: 15px; }
+    .btn-switch-network {
+      padding: 9px 18px; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+      color: white; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: 'Inter', sans-serif;
+      white-space: nowrap; transition: all 0.2s;
+      box-shadow: 0 4px 16px rgba(239,68,68,0.3);
+    }
+    .btn-switch-network:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(239,68,68,0.45); }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⛽</div>
+    <div>
+      <div class="logo-text">GasGuard</div>
+      <div class="logo-sub">Smart Gas Scheduler</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="network-badge" id="networkBadge">
+      <div class="net-dot off" id="netDot"></div>
+      <span id="networkName">Not Connected</span>
+    </div>
+    <button id="connectBtn" onclick="connectWallet()">🦊 Connect Wallet</button>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="stat-label">Wallet Balance</div>
+    <div class="stat-value green" id="walletBal">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Contract Locked</div>
+    <div class="stat-value purple" id="contractBal">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Network Gas Price</div>
+    <div class="stat-value yellow" id="gasPrice">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Scheduled</div>
+    <div class="stat-value blue" id="txCount">—</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main>
+
+  <!-- APP FLOW BANNER -->
+  <div class="flow-banner">
+    <div class="flow-step">👤 Connect Wallet</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="tag">Send Now</span> sends ETH instantly</div>
+    <div class="flow-arrow">|</div>
+    <div class="flow-step"><span class="tag">Schedule</span> locks ETH in contract</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Contract auto-releases when gas ≤ your limit ✅</div>
+  </div>
+
+  <!-- TESTNET TIP -->
+  <div class="testnet-tip" id="testnetTip">
+    ⚠️ You're on a testnet! Get free Sepolia ETH from a <a href="https://sepoliafaucet.com" target="_blank">faucet</a>. The contract address below works only after you deploy it on this network.
+  </div>
+
+  <!-- NETWORK MISMATCH BANNER -->
+  <div class="network-mismatch-banner" id="networkMismatchBanner">
+    <span style="font-size:28px">⚠️</span>
+    <div class="mismatch-text">
+      <div class="mismatch-title">Wrong Network Detected</div>
+      Your MetaMask is connected to <strong id="wrongNetworkName">another network</strong>, but the contract is deployed on <strong>Hardhat Local</strong> or <strong>Sepolia Testnet</strong>.
+      Switch to one of these networks to view and interact with your scheduled transactions.
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-switch-network" onclick="switchToHardhat()">🔀 Switch to Hardhat</button>
+      <button class="btn-switch-network" style="background:linear-gradient(135deg, #a855f7, #3b82f6);box-shadow:0 4px 16px rgba(168,85,247,0.3);" onclick="switchToSepolia()">🔀 Switch to Sepolia</button>
+    </div>
+  </div>
+
+  <!-- ACTION GRID -->
+  <div class="action-grid">
+
+    <!-- SEND NOW -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon icon-send">⚡</div>
+        <div>
+          <div class="card-title">Send Now</div>
+          <div class="card-sub">Instant ETH transfer via MetaMask</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Recipient Address</label>
+        <input id="sn-recipient" type="text" placeholder="0x..." />
+      </div>
+      <div class="form-group">
+        <label>Amount (ETH)</label>
+        <input id="sn-amount" type="number" step="0.001" min="0" placeholder="0.01" />
+      </div>
+      <button class="btn btn-send" id="sendNowBtn" onclick="sendNow()" disabled>
+        ⚡ Send Now
+      </button>
+    </div>
+
+    <!-- SCHEDULE TRANSACTION -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon icon-sched">🕐</div>
+        <div>
+          <div class="card-title">Schedule Transaction</div>
+          <div class="card-sub">🧠 Keeper finds the lowest gas price before your deadline</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Recipient Address</label>
+        <input id="sc-recipient" type="text" placeholder="0x..." />
+      </div>
+      <div class="form-group">
+        <label>Amount (ETH)</label>
+        <input id="sc-amount" type="number" step="0.001" min="0" placeholder="0.05" />
+      </div>
+      <div class="form-group">
+        <label>Execute Within</label>
+        <select id="sc-deadline-preset" onchange="onDeadlinePreset()">
+          <option value="21600">6 hours</option>
+          <option value="86400" selected>1 day</option>
+          <option value="172800">2 days</option>
+          <option value="604800">1 week</option>
+          <option value="custom">Custom date &amp; time…</option>
+        </select>
+      </div>
+      <div class="form-group" id="sc-custom-wrap" style="display:none">
+        <label>Custom Deadline</label>
+        <input id="sc-expiry" type="datetime-local" />
+      </div>
+      <button class="btn btn-schedule" id="scheduleBtn" onclick="scheduleTransaction()" disabled>
+        🧠 Smart Schedule
+      </button>
+    </div>
+
+  </div>
+
+  <!-- CONTRACT ADDRESS CONFIG -->
+  <div class="card" style="margin-bottom:28px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:var(--muted);font-weight:600;white-space:nowrap;">Contract Address:</span>
+      <input id="contractAddr" type="text" placeholder="Paste your deployed contract address here (0x...)"
+        style="flex:1;min-width:260px;font-size:13px;" oninput="onContractAddrChange()" />
+      <button class="btn-xs btn-exec" onclick="refreshAll()" style="white-space:nowrap;padding:8px 14px">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <!-- SCHEDULED TXS -->
+  <div class="section-title">
+    My Scheduled Transactions
+    <span class="badge" id="txBadge">0</span>
+  </div>
+  <div class="txs-card">
+    <div class="txs-empty" id="txsEmpty">🔗 Connect wallet & set contract address to view transactions</div>
+    <div id="txsTableWrap" style="display:none;overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>#ID</th>
+            <th>Recipient</th>
+            <th>Amount</th>
+            <th>Deadline</th>
+            <th>⏰ Est. Execution</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="txsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────
+const CONTRACT_ABI = [
+  {"inputs":[{"internalType":"uint256","name":"txId","type":"uint256"}],"name":"cancelTransaction","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"txId","type":"uint256"}],"name":"checkCondition","outputs":[{"internalType":"bool","name":"ready","type":"bool"},{"internalType":"string","name":"reason","type":"string"},{"internalType":"uint256","name":"currentGas","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"contractBalance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"txId","type":"uint256"}],"name":"executeTransaction","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"txId","type":"uint256"}],"name":"getTransaction","outputs":[{"components":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"maxGasPrice","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"},{"internalType":"address","name":"owner","type":"address"},{"internalType":"bool","name":"executed","type":"bool"},{"internalType":"bool","name":"cancelled","type":"bool"}],"internalType":"struct GasOptimizedScheduler.ScheduledTx","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"maxGasPrice","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"scheduleTransaction","outputs":[{"internalType":"uint256","name":"txId","type":"uint256"}],"stateMutability":"payable","type":"function"},
+  {"inputs":[],"name":"txCounter","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+];
+
+// Network names
+const NETWORKS = {
+  1:        { name: "Ethereum Mainnet",  color: "green" },
+  11155111: { name: "Sepolia Testnet",   color: "warn"  },
+  31337:    { name: "Hardhat Local",     color: "green" },
+  5:        { name: "Goerli Testnet",    color: "warn"  },
+};
+
+// ── STATE ──────────────────────────────────────────
+let provider, signer, userAddress, contract, chainId;
+
+// ── WALLET ──────────────────────────────────────────
+async function connectWallet() {
+  if (!window.ethereum) return toast("MetaMask not detected! Please install it.", "error");
+  try {
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    const network = await provider.getNetwork();
+    chainId = network.chainId;
+    updateNetworkBadge(chainId);
+
+    const short = userAddress.slice(0,6) + "..." + userAddress.slice(-4);
+    document.getElementById("connectBtn").textContent = "🟢 " + short;
+    document.getElementById("connectBtn").classList.add("connected");
+
+    document.getElementById("sendNowBtn").disabled = false;
+    document.getElementById("scheduleBtn").disabled = false;
+
+    // show testnet tip
+    if ([11155111, 5].includes(chainId)) {
+      document.getElementById("testnetTip").style.display = "block";
+    }
+
+    // Load contract if address already filled
+    loadContractIfReady();
+    await refreshAll();
+
+    toast("Wallet connected! " + short, "success");
+
+    // Check network mismatch — warn if not on Hardhat or Sepolia
+    checkNetworkMismatch(chainId);
+
+    // Listen for account/chain changes
+    window.ethereum.on("accountsChanged", () => location.reload());
+    window.ethereum.on("chainChanged",    () => location.reload());
+  } catch(e) {
+    toast(e.message || "Connection failed", "error");
+  }
+}
+
+function checkNetworkMismatch(cid) {
+  const banner = document.getElementById("networkMismatchBanner");
+  // If not on Hardhat (31337) AND not on Sepolia (11155111)
+  if (cid !== 31337 && cid !== 11155111) {
+    const info = NETWORKS[cid] || { name: "Chain " + cid };
+    document.getElementById("wrongNetworkName").textContent = info.name;
+    banner.style.display = "flex";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+async function switchToHardhat() {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x7a69" }], // 31337 in hex
+    });
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0x7a69",
+            chainName: "Hardhat Local",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["http://127.0.0.1:8545"],
+          }],
+        });
+      } catch (addErr) {
+        toast("Could not add network: " + (addErr.message || addErr), "error");
+      }
+    } else {
+      toast("Could not switch network: " + (switchErr.message || switchErr), "error");
+    }
+  }
+}
+
+async function switchToSepolia() {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0xaa36a7" }], // 11155111 in hex
+    });
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0xaa36a7",
+            chainName: "Sepolia Testnet",
+            nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["https://eth-sepolia.g.alchemy.com/v2/demo"], // generic fallback
+          }],
+        });
+      } catch (addErr) {
+        toast("Could not add network: " + (addErr.message || addErr), "error");
+      }
+    } else {
+      toast("Could not switch network: " + (switchErr.message || switchErr), "error");
+    }
+  }
+}
+
+function updateNetworkBadge(cid) {
+  const info = NETWORKS[cid] || { name: "Chain " + cid, color: "warn" };
+  document.getElementById("networkName").textContent = info.name;
+  const dot = document.getElementById("netDot");
+  dot.className = "net-dot " + (info.color === "green" ? "" : info.color);
+}
+
+// ── CONTRACT SETUP ──────────────────────────────────
+function getContractAddr() { return document.getElementById("contractAddr").value.trim(); }
+
+function loadContractIfReady() {
+  const addr = getContractAddr();
+  if (!signer || !addr || !ethers.utils.isAddress(addr)) { contract = null; return false; }
+  contract = new ethers.Contract(addr, CONTRACT_ABI, signer);
+  return true;
+}
+
+async function onContractAddrChange() {
+  loadContractIfReady();
+  if (contract) await refreshAll();
+}
+
+// ── REFRESH / STATS ─────────────────────────────────
+async function refreshAll() {
+  if (!signer) return;
+  try {
+    // Wallet balance
+    const bal = await provider.getBalance(userAddress);
+    document.getElementById("walletBal").textContent = parseFloat(ethers.utils.formatEther(bal)).toFixed(4) + " ETH";
+
+    // Gas price
+    const gp = await provider.getGasPrice();
+    const gweiStr = parseFloat(ethers.utils.formatUnits(gp, "gwei")).toFixed(2) + " Gwei";
+    document.getElementById("gasPrice").textContent = gweiStr;
+  } catch(e) {}
+
+  if (!contract) return;
+  try {
+    // Contract balance
+    const cbal = await contract.contractBalance();
+    document.getElementById("contractBal").textContent = parseFloat(ethers.utils.formatEther(cbal)).toFixed(4) + " ETH";
+
+    // TX count
+    const count = await contract.txCounter();
+    const n = count.toNumber();
+    document.getElementById("txCount").textContent = n;
+    document.getElementById("txBadge").textContent = n;
+
+    await loadTxs(n);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ── LOAD SCHEDULED TXS ──────────────────────────────────
+async function loadTxs(count) {
+  if (!contract) {
+    document.getElementById("txsEmpty").textContent = "🔗 Set a valid contract address to view transactions";
+    document.getElementById("txsEmpty").style.display = "block";
+    document.getElementById("txsTableWrap").style.display = "none";
+    return;
+  }
+  if (count === 0) {
+    document.getElementById("txsEmpty").textContent = "💭 No scheduled transactions yet. Create one above!";
+    document.getElementById("txsEmpty").style.display = "block";
+    document.getElementById("txsTableWrap").style.display = "none";
+    return;
+  }
+  document.getElementById("txsEmpty").style.display = "none";
+  document.getElementById("txsTableWrap").style.display = "block";
+
+  // Fetch keeper predictions (written by keeper every 30s)
+  let predictions = {};
+  try {
+    // Try local first, fallback to live keeper URL
+    const KEEPER_URL = "https://celestial-keeper.onrender.com/predictions.json";
+    const r = await fetch(KEEPER_URL + '?t=' + Date.now());
+    if (r.ok) { const d = await r.json(); predictions = d.predictions || {}; }
+    else {
+      const rl = await fetch('./predictions.json?t=' + Date.now());
+      if (rl.ok) { const dl = await rl.json(); predictions = dl.predictions || {}; }
+    }
+  } catch {}
+
+  const tbody = document.getElementById("txsBody");
+  tbody.innerHTML = "";
+
+  for (let i = 0; i < count; i++) {
+    try {
+      const tx  = await contract.getTransaction(i);
+      const now = Math.floor(Date.now() / 1000);
+
+      let statusClass = "status-pending", statusLabel = "⏳ Pending";
+      if (tx.executed)                         { statusClass = "status-executed";  statusLabel = "✅ Executed"; }
+      else if (tx.cancelled)                   { statusClass = "status-cancelled"; statusLabel = "❌ Cancelled"; }
+      else if (tx.expiry.toNumber() < now)     { statusClass = "status-cancelled"; statusLabel = "⌛ Expired"; }
+
+      const isPending = !tx.executed && !tx.cancelled && tx.expiry.toNumber() > now;
+      const expiryDate = new Date(tx.expiry.toNumber() * 1000).toLocaleString();
+      const amtEth     = parseFloat(ethers.utils.formatEther(tx.amount)).toFixed(4);
+      const shortAddr  = tx.recipient.slice(0,6) + "…" + tx.recipient.slice(-4);
+
+      // Prediction cell
+      const pred = predictions[i.toString()];
+      let predCell = '<span style="color:var(--muted);font-size:11px">🔄 Keeper collecting data…</span>';
+      if (!isPending) {
+        predCell = '<span style="color:var(--muted);font-size:11px">—</span>';
+      } else if (pred) {
+        const pDate = new Date(pred.predictedISO);
+        const pStr  = pDate.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' })
+                    + ' ' + pDate.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+        const confColor = pred.confidence === 'high' ? '#4ade80' : pred.confidence === 'medium' ? '#fbbf24' : '#94a3b8';
+        predCell = `
+          <div style="font-size:12px">
+            <div style="color:#e2e8f0;font-weight:600">⏰ ${pStr}</div>
+            <div style="color:${confColor};font-size:11px;margin-top:2px">${pred.confidence} confidence • ~${pred.bestGwei} Gwei</div>
+          </div>`;
+      }
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>#${i}</strong></td>
+        <td><span class="addr" title="${tx.recipient}">${shortAddr}</span></td>
+        <td>${amtEth} ETH</td>
+        <td style="font-size:12px;color:var(--muted)">${expiryDate}</td>
+        <td>${predCell}</td>
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td>
+          <div class="action-btns">
+            <button class="btn-xs btn-exec"   onclick="executeTx(${i})"  ${isPending ? "" : "disabled"}>▶ Execute</button>
+            <button class="btn-xs btn-cancel" onclick="cancelTx(${i})"   ${isPending ? "" : "disabled"}>✕ Cancel</button>
+          </div>
+        </td>`;
+      tbody.appendChild(tr);
+    } catch(e) { console.error("tx", i, e); }
+  }
+}
+
+// ── SEND NOW ────────────────────────────────────────
+async function sendNow() {
+  if (!signer) return toast("Connect wallet first!", "error");
+  const to = document.getElementById("sn-recipient").value.trim();
+  const amt = document.getElementById("sn-amount").value.trim();
+  if (!ethers.utils.isAddress(to)) return toast("Invalid recipient address", "error");
+  if (!amt || parseFloat(amt) <= 0) return toast("Enter a valid amount", "error");
+
+  const btn = document.getElementById("sendNowBtn");
+  btn.innerHTML = '<div class="spinner"></div> Sending…';
+  btn.disabled = true;
+  try {
+    const tx = await signer.sendTransaction({
+      to,
+      value: ethers.utils.parseEther(amt)
+    });
+    toast("Tx sent! Hash: " + tx.hash.slice(0,18) + "…", "info");
+    await tx.wait();
+    toast("✅ ETH sent successfully!", "success");
+    document.getElementById("sn-recipient").value = "";
+    document.getElementById("sn-amount").value = "";
+    await refreshAll();
+  } catch(e) {
+    toast(e.reason || e.message || "Transaction failed", "error");
+  } finally {
+    btn.innerHTML = "⚡ Send Now";
+    btn.disabled = false;
+  }
+}
+
+// ── SCHEDULE TRANSACTION ────────────────────────────
+async function scheduleTransaction() {
+  if (!signer) return toast("Connect wallet first!", "error");
+  if (!loadContractIfReady()) return toast("Set a valid contract address first!", "error");
+
+  const recipient = document.getElementById("sc-recipient").value.trim();
+  const amt       = document.getElementById("sc-amount").value.trim();
+  const hardCap   = "200"; // silent default — user never needs to think about this
+
+  if (!ethers.utils.isAddress(recipient)) return toast("Invalid recipient address", "error");
+  if (!amt || parseFloat(amt) <= 0)        return toast("Enter a valid ETH amount", "error");
+  if (!hardCap || parseFloat(hardCap) <= 0) return toast("Enter a hard cap (Gwei)", "error");
+
+  // Resolve deadline
+  let expiryTs;
+  const preset = document.getElementById("sc-deadline-preset").value;
+  if (preset === "custom") {
+    const raw = document.getElementById("sc-expiry").value;
+    if (!raw) return toast("Pick a custom deadline", "error");
+    expiryTs = Math.floor(new Date(raw).getTime() / 1000);
+  } else {
+    expiryTs = Math.floor(Date.now() / 1000) + parseInt(preset);
+  }
+  if (expiryTs <= Math.floor(Date.now() / 1000)) return toast("Deadline must be in the future!", "error");
+
+  const maxGasWei = ethers.utils.parseUnits(hardCap, "gwei");
+  const value     = ethers.utils.parseEther(amt);
+
+  const btn = document.getElementById("scheduleBtn");
+  btn.innerHTML = '<div class="spinner"></div> Scheduling…';
+  btn.disabled = true;
+  try {
+    const tx = await contract.scheduleTransaction(recipient, maxGasWei, expiryTs, { value });
+    toast("Tx submitted! Hash: " + tx.hash.slice(0,18) + "…", "info");
+    const receipt = await tx.wait();
+    const deadlineStr = new Date(expiryTs * 1000).toLocaleString();
+    toast("✅ Scheduled! Keeper will find the best gas price before " + deadlineStr, "success");
+    document.getElementById("sc-recipient").value = "";
+    document.getElementById("sc-amount").value    = "";
+    await refreshAll();
+  } catch(e) {
+    toast(e.reason || e.message || "Scheduling failed", "error");
+  } finally {
+    btn.innerHTML = "🧠 Smart Schedule";
+    btn.disabled = false;
+  }
+}
+
+// ── EXECUTE TX ──────────────────────────────────────
+async function executeTx(id) {
+  if (!contract) return toast("Set contract address first!", "error");
+  try {
+    const [ready, reason] = await contract.checkCondition(id);
+    if (!ready) return toast("⚠️ Not ready: " + reason, "error");
+    const tx = await contract.executeTransaction(id);
+    toast("Executing tx #" + id + "…", "info");
+    await tx.wait();
+    toast("✅ Tx #" + id + " executed! ETH sent to recipient.", "success");
+    await refreshAll();
+  } catch(e) {
+    toast(e.reason || e.message || "Execution failed", "error");
+  }
+}
+
+// ── CANCEL TX ───────────────────────────────────────
+async function cancelTx(id) {
+  if (!contract) return toast("Set contract address first!", "error");
+  try {
+    const tx = await contract.cancelTransaction(id);
+    toast("Cancelling tx #" + id + "…", "info");
+    await tx.wait();
+    toast("✅ Tx #" + id + " cancelled. ETH refunded.", "success");
+    await refreshAll();
+  } catch(e) {
+    toast(e.reason || e.message || "Cancellation failed", "error");
+  }
+}
+
+// ── TOAST ────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, type = "info") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = "block";
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.display = "none"; }, 5000);
+}
+
+// ── DEADLINE PRESET HANDLER ──────────────────────────
+function onDeadlinePreset() {
+  const val = document.getElementById("sc-deadline-preset").value;
+  document.getElementById("sc-custom-wrap").style.display = val === "custom" ? "block" : "none";
+  if (val === "custom") {
+    const d = new Date(Date.now() + 48 * 3600 * 1000);
+    d.setMinutes(0, 0, 0);
+    document.getElementById("sc-expiry").value = d.toISOString().slice(0,16);
+  }
+}
+
+// ── AUTO-LOAD CONTRACT ADDRESS FROM deployed.json ────
+(async function autoLoadContract() {
+  try {
+    const res = await fetch('./deployed.json');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.address && data.address !== '') {
+      const el = document.getElementById("contractAddr");
+      el.value = data.address;
+      el.style.borderColor = 'rgba(124,58,237,0.5)';
+      // Show which network it's from
+      const networkLabel = data.network
+        ? ` (${data.network})`
+        : '';
+      el.title = `Auto-loaded from deployed.json${networkLabel} · Deployed: ${data.deployedAt || 'unknown'}`;
+      // If wallet already connected, refresh
+      if (signer) await refreshAll();
+    }
+  } catch { /* silently skip if file not found */ }
+})();
+</script>
+</body>
+</html>
