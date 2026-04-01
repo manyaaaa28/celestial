@@ -36,7 +36,11 @@ With GasGuard, you don't send transactions—you **delegate** them.
 ## 🚀 Quick Start for Users
 
 ### 1. Connect
+<<<<<<< HEAD
 Open the [GasGuard Dashboard](index.html) and connect your MetaMask wallet.
+=======
+Open the Dashboard and connect your MetaMask wallet.
+>>>>>>> 5439f93db54c7d01030cfeca88a4d850d7706aae
 
 ### 2. Schedule
 Enter the recipient's address and the amount. Select a time window (6 hours, 1 day, etc.) and hit **Smart Schedule**.
@@ -50,6 +54,7 @@ Watch your transaction in the "Scheduled Transactions" table. You'll see an **Es
 If you want to run your own keeper bot or deploy the contract locally:
 
 ```bash
+<<<<<<< HEAD
 # Install dependencies
 npm install
 
@@ -60,11 +65,27 @@ npx hardhat node
 npx hardhat run scripts/deploy.cjs --network localhost
 
 # Start the automated keeper
+=======
+# 1. Install dependencies
+npm install
+
+# 2. Compile the smart contract (Generates artifacts/ABI)
+npx hardhat compile
+
+# 3. Run a local test network (Keep this terminal open)
+npx hardhat node
+
+# 4. Deploy the contract to local network
+npx hardhat run scripts/deploy.cjs --network localhost
+
+# 5. Start the automated keeper bot
+>>>>>>> 5439f93db54c7d01030cfeca88a4d850d7706aae
 npm run keeper:local
 ```
 
 ---
 
+<<<<<<< HEAD
 ## 🔒 Security
 - **Non-Custodial:** Only you (the owner) can cancel or modify your transactions.
 - **Transparent:** Every action is recorded on the blockchain for anyone to verify.
@@ -112,4 +133,6 @@ SOFTWARE.
 ```
 
 ---
+=======
+>>>>>>> 5439f93db54c7d01030cfeca88a4d850d7706aae
 *Save gas, sleep better. Powered by GasGuard.*
